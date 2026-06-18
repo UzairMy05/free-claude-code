@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from messaging.handler import ClaudeMessageHandler
 from messaging.models import IncomingMessage
 from messaging.session import SessionStore
-from messaging.trees.queue_manager import TreeQueueManager
+from messaging.trees import TreeQueueManager
+from messaging.workflow import MessagingWorkflow
 
 
 @pytest.mark.asyncio
@@ -16,7 +16,7 @@ async def test_reply_to_old_status_message_after_restore_routes_to_parent(
     store_path = tmp_path / "sessions.json"
     store = SessionStore(storage_path=str(store_path))
 
-    handler1 = ClaudeMessageHandler(mock_platform, mock_cli_manager, store)
+    handler1 = MessagingWorkflow(mock_platform, mock_cli_manager, store)
     a_incoming = IncomingMessage(
         text="A",
         chat_id="chat_1",
@@ -34,7 +34,7 @@ async def test_reply_to_old_status_message_after_restore_routes_to_parent(
 
     # "Restart": new store instance loads from disk, and we restore TreeQueueManager.
     store2 = SessionStore(storage_path=str(store_path))
-    handler2 = ClaudeMessageHandler(mock_platform, mock_cli_manager, store2)
+    handler2 = MessagingWorkflow(mock_platform, mock_cli_manager, store2)
     handler2.replace_tree_queue(
         TreeQueueManager.from_dict(
             {
@@ -75,7 +75,7 @@ async def test_reply_to_old_status_message_without_mapping_creates_new_conversat
     store_path = tmp_path / "sessions.json"
     store = SessionStore(storage_path=str(store_path))
 
-    handler1 = ClaudeMessageHandler(mock_platform, mock_cli_manager, store)
+    handler1 = MessagingWorkflow(mock_platform, mock_cli_manager, store)
     a_incoming = IncomingMessage(
         text="A",
         chat_id="chat_1",
@@ -91,7 +91,7 @@ async def test_reply_to_old_status_message_without_mapping_creates_new_conversat
     store.flush_pending_save()
 
     store2 = SessionStore(storage_path=str(store_path))
-    handler2 = ClaudeMessageHandler(mock_platform, mock_cli_manager, store2)
+    handler2 = MessagingWorkflow(mock_platform, mock_cli_manager, store2)
     handler2.replace_tree_queue(
         TreeQueueManager.from_dict(
             {

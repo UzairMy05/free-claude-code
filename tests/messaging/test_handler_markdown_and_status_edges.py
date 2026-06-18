@@ -2,11 +2,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from messaging.handler import ClaudeMessageHandler
 from messaging.models import IncomingMessage
 from messaging.node_event_pipeline import process_parsed_cli_event
 from messaging.rendering.telegram_markdown import render_markdown_to_mdv2
 from messaging.trees.data import MessageNode, MessageState
+from messaging.workflow import MessagingWorkflow
 
 
 def test_render_markdown_to_mdv2_empty_returns_empty():
@@ -79,7 +79,7 @@ def test_get_initial_status_branches():
     platform = MagicMock()
     cli_manager = MagicMock()
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
 
     with (
         patch.object(
@@ -87,17 +87,17 @@ def test_get_initial_status_branches():
         ),
         patch.object(handler.tree_queue, "get_queue_size", MagicMock(return_value=2)),
     ):
-        s1 = handler._get_initial_status(tree=object(), parent_node_id="p")
+        s1 = handler.turn_intake._get_initial_status(tree=object(), parent_node_id="p")
     assert "Queued" in s1
     assert "position 3" in s1 or "position 3" in s1.replace("\\", "")
 
     with patch.object(
         handler.tree_queue, "is_node_tree_busy", MagicMock(return_value=False)
     ):
-        s2 = handler._get_initial_status(tree=object(), parent_node_id="p")
+        s2 = handler.turn_intake._get_initial_status(tree=object(), parent_node_id="p")
     assert "Continuing" in s2
 
-    s3 = handler._get_initial_status(tree=None, parent_node_id=None)
+    s3 = handler.turn_intake._get_initial_status(tree=None, parent_node_id=None)
     assert "Launching" in s3
 
 
@@ -111,7 +111,7 @@ async def test_update_queue_positions_handles_snapshot_error_and_skips_non_pendi
 
     cli_manager = MagicMock()
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
 
     # Snapshot error is swallowed.
     tree = MagicMock()
@@ -136,7 +136,7 @@ async def test_update_queue_positions_handles_snapshot_error_and_skips_non_pendi
 
 
 @pytest.mark.asyncio
-async def test_process_node_session_limit_marks_error_and_updates_ui():
+async def test_node_runner_process_node_session_limit_marks_error_and_updates_ui():
     platform = MagicMock()
     platform.queue_edit_message = AsyncMock()
     platform.fire_and_forget = MagicMock(
@@ -148,7 +148,7 @@ async def test_process_node_session_limit_marks_error_and_updates_ui():
     cli_manager.get_stats.return_value = {"active_sessions": 0}
 
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
 
     fake_tree = MagicMock()
     fake_tree.update_state = AsyncMock()
@@ -164,7 +164,7 @@ async def test_process_node_session_limit_marks_error_and_updates_ui():
         )
         node = MessageNode(node_id="n1", incoming=incoming, status_message_id="s1")
 
-        await handler._process_node("n1", node)
+        await handler.node_runner.process_node("n1", node)
     assert platform.queue_edit_message.await_count >= 1
     fake_tree.update_state.assert_awaited()
 
@@ -182,7 +182,7 @@ async def test_stop_all_tasks_saves_tree_for_cancelled_nodes():
     cli_manager.get_stats.return_value = {"active_sessions": 0}
 
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
 
     incoming = IncomingMessage(
         text="hi",
@@ -218,7 +218,7 @@ async def test_handle_message_reply_with_tree_but_no_parent_treated_as_new():
     cli_manager.get_stats.return_value = {"active_sessions": 0}
 
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
 
     # Force "tree exists but parent can't be resolved" branch.
     mock_queue = MagicMock()
@@ -272,7 +272,7 @@ async def test_update_ui_handles_transcript_render_exception():
     cli_manager.remove_session = AsyncMock()
     cli_manager.get_stats.return_value = {"active_sessions": 0}
 
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
     mock_queue = MagicMock()
     mock_queue.get_tree_for_node.return_value = None
     handler.replace_tree_queue(mock_queue)
@@ -286,13 +286,15 @@ async def test_update_ui_handles_transcript_render_exception():
     )
     node = MessageNode(node_id="n1", incoming=incoming, status_message_id="s1")
 
-    with patch.object(handler, "_create_transcript_and_render_ctx") as mock_create:
+    with patch.object(
+        handler.node_runner, "_create_transcript_and_render_ctx"
+    ) as mock_create:
         transcript = MagicMock()
         transcript.render = MagicMock(side_effect=ValueError("render failed"))
         render_ctx = MagicMock()
         mock_create.return_value = (transcript, render_ctx)
 
-        await handler._process_node("n1", node)
+        await handler.node_runner.process_node("n1", node)
 
     assert transcript.render.call_count >= 1
 
@@ -308,7 +310,7 @@ async def test_handle_message_incoming_text_none_safe():
     cli_manager.get_stats.return_value = {"active_sessions": 0}
 
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
     mock_queue = MagicMock()
     mock_queue.get_tree_for_node.return_value = None
     mock_queue.resolve_parent_node_id.return_value = None
@@ -340,7 +342,7 @@ async def test_process_parsed_event_malformed_content_continues():
 
     cli_manager = MagicMock()
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
 
     transcript = MagicMock()
     update_ui = AsyncMock()
@@ -364,7 +366,7 @@ async def test_process_parsed_event_malformed_content_continues():
 
 @pytest.mark.asyncio
 async def test_handler_update_ui_edit_failure_does_not_crash():
-    """When queue_edit_message raises during streaming, _process_node continues and completes."""
+    """When queue_edit_message raises during streaming, node_runner.process_node continues and completes."""
     platform = MagicMock()
     platform.queue_edit_message = AsyncMock(
         side_effect=RuntimeError("Telegram API error")
@@ -396,7 +398,7 @@ async def test_handler_update_ui_edit_failure_does_not_crash():
     cli_manager.get_stats.return_value = {"active_sessions": 0}
 
     session_store = MagicMock()
-    handler = ClaudeMessageHandler(platform, cli_manager, session_store)
+    handler = MessagingWorkflow(platform, cli_manager, session_store)
     mock_queue = MagicMock()
     mock_queue.get_tree_for_node.return_value = None
     handler.replace_tree_queue(mock_queue)
@@ -410,6 +412,6 @@ async def test_handler_update_ui_edit_failure_does_not_crash():
     )
     node = MessageNode(node_id="n1", incoming=incoming, status_message_id="s1")
 
-    await handler._process_node("n1", node)
+    await handler.node_runner.process_node("n1", node)
 
     cli_manager.remove_session.assert_awaited_once()
