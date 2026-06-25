@@ -1,5 +1,11 @@
 {
   "mcpServers": {
+    "markitdown": {
+      "command": "uvx",
+      "args": [
+        "markitdown-mcp"
+      ]
+    },
     "claude-flow": {
       "command": "cmd",
       "args": [
