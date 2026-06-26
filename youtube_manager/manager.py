@@ -71,52 +71,159 @@ KIDS_TOPICS = [
 ]
 
 
-def generate_kids_content():
-    """
-    Attempts to generate a kids' educational topic using an LLM if keys exist.
-    Otherwise, picks a random one from the built-in database.
-    """
-    # Placeholder for LLM generation if Gemini/OpenAI API is set up:
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    openai_key = os.getenv("OPENAI_API_KEY")
+def _openrouter_client() -> "OpenAI | None":
+    """Return an OpenAI-compatible client pointed at OpenRouter, or None if no key."""
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if not openrouter_key:
+        return None
+    from openai import OpenAI
 
-    prompt = (
-        "Generate a fun science/educational fact for kids under 12. "
-        "Output JSON with 'title' (max 50 chars), 'paragraphs' (a list of 3-4 short, simple sentences suitable for kids voiceover), "
-        "and 'tags' (a list of 5 tags)."
+    return OpenAI(
+        api_key=openrouter_key,
+        base_url="https://openrouter.ai/api/v1",
+        default_headers={
+            "HTTP-Referer": "https://github.com/UzairMy05/free-claude-code",
+            "X-Title": "YouTube Shorts Kids Manager",
+        },
     )
 
-    if gemini_key or openai_key:
-        try:
-            from openai import OpenAI
 
-            if gemini_key:
-                client = OpenAI(
-                    api_key=gemini_key,
-                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                )
-                model_name = "gemini-1.5-flash"
-            else:
-                client = OpenAI(api_key=openai_key)
-                model_name = "gpt-4o-mini"
+def _generate_topic(client: "OpenAI") -> dict | None:
+    """
+    Agent 1 — Topic Ideator.
+    Model: google/gemini-2.5-pro-exp-03-25:free
+    Strength: Deep reasoning + broad knowledge for creative, unique topic ideas.
+    """
+    import json
 
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-            )
-            import json
+    prompt = (
+        "You are a creative children's education expert. "
+        "Generate ONE unique, fun science or nature fact suitable for kids under 12. "
+        "Avoid common topics like 'sky is blue' or 'grass is green'. "
+        "Output ONLY valid JSON with this exact structure: "
+        '{"title": "<max 50 chars>", "topic_summary": "<1 sentence plain description>"}'
+    )
+    try:
+        response = client.chat.completions.create(
+            model="google/gemini-2.5-pro-exp-03-25:free",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=200,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("Empty topic response")
+        return json.loads(content)
+    except Exception as e:
+        print(f"[Topic Ideator] Failed: {e}")
+        return None
 
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Empty response from LLM")
-            data = json.loads(content)
-            return data
-        except Exception as e:
-            print(f"LLM generation failed: {e}. Falling back to database.")
+
+def _generate_script(client: "OpenAI", title: str, topic_summary: str) -> list[str] | None:
+    """
+    Agent 2 — Script Writer.
+    Model: deepseek/deepseek-r1:free
+    Strength: Structured, logical writing with step-by-step reasoning for clear explanations.
+    """
+    import json
+
+    prompt = (
+        f"You are a children's science writer. Write a voiceover script for a YouTube Short about: '{title}'.\n"
+        f"Context: {topic_summary}\n"
+        "Rules:\n"
+        "- Write exactly 4 sentences.\n"
+        "- Each sentence must be simple, clear, and exciting for kids under 12.\n"
+        "- Avoid technical jargon. Use vivid, concrete comparisons.\n"
+        "- Each sentence should be 15-25 words.\n"
+        'Output ONLY valid JSON: {"paragraphs": ["sentence1", "sentence2", "sentence3", "sentence4"]}'
+    )
+    try:
+        response = client.chat.completions.create(
+            model="deepseek/deepseek-r1:free",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=400,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("Empty script response")
+        data = json.loads(content)
+        return data.get("paragraphs")
+    except Exception as e:
+        print(f"[Script Writer] Failed: {e}")
+        return None
+
+
+def _generate_tags(client: "OpenAI", title: str, paragraphs: list[str]) -> list[str]:
+    """
+    Agent 3 — SEO Tag Specialist.
+    Model: meta-llama/llama-3.3-70b-instruct:free
+    Strength: Fast instruction-following, excellent at classification and keyword extraction.
+    """
+    import json
+
+    script_text = " ".join(paragraphs)
+    prompt = (
+        f"You are a YouTube SEO expert for kids' educational content.\n"
+        f"Video title: '{title}'\n"
+        f"Script: {script_text}\n"
+        "Generate exactly 8 high-ranking YouTube tags for this video. "
+        "Mix broad tags (e.g. 'kids science') with specific ones (e.g. the topic name). "
+        'Output ONLY valid JSON: {"tags": ["tag1", "tag2", ..., "tag8"]}'
+    )
+    try:
+        response = client.chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct:free",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            max_tokens=200,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("Empty tags response")
+        data = json.loads(content)
+        return data.get("tags", [])
+    except Exception as e:
+        print(f"[SEO Tag Specialist] Failed: {e}. Using fallback tags.")
+        return ["kids", "educational", "science for kids", "fun facts", "shorts"]
+
+
+def generate_kids_content() -> dict:
+    """
+    Orchestrates three specialized free AI agents to create a full YouTube Short brief.
+
+    Pipeline:
+      Agent 1 (Gemini 2.5 Pro)     → Topic ideation
+      Agent 2 (DeepSeek R1)        → Script writing
+      Agent 3 (Llama 3.3 70B)      → SEO tag generation
+
+    Falls back to the built-in KIDS_TOPICS database if OpenRouter is unavailable.
+    """
+    client = _openrouter_client()
+    if client:
+        print("🤖 Agent 1 (Gemini 2.5 Pro): Generating topic...")
+        topic_data = _generate_topic(client)
+
+        if topic_data:
+            title = topic_data.get("title", "")
+            topic_summary = topic_data.get("topic_summary", "")
+
+            print(f"   ✅ Topic: {title}")
+            print("🤖 Agent 2 (DeepSeek R1): Writing script...")
+            paragraphs = _generate_script(client, title, topic_summary)
+
+            if paragraphs:
+                print("   ✅ Script ready.")
+                print("🤖 Agent 3 (Llama 3.3 70B): Generating SEO tags...")
+                tags = _generate_tags(client, title, paragraphs)
+                print(f"   ✅ Tags: {', '.join(tags)}")
+                return {"title": title, "paragraphs": paragraphs, "tags": tags}
+
+        print("⚠️  One or more agents failed. Falling back to built-in database.")
 
     # Fallback to local list
     return random.choice(KIDS_TOPICS)
+
 
 
 def run_daily_pipeline(count=5, delay_hours=3):
