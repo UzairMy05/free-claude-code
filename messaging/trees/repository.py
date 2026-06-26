@@ -1,5 +1,7 @@
 """In-memory repository for messaging trees and node indexes."""
 
+from __future__ import annotations
+
 from loguru import logger
 
 from .data import MessageNode, MessageState, MessageTree

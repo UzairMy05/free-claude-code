@@ -58,11 +58,11 @@ def _body_from_response(exc: Exception) -> Any:
         return None
     try:
         return response.json()
-    except ValueError, RuntimeError:
+    except (ValueError, RuntimeError):
         pass
     try:
         return response.text
-    except httpx.ResponseNotRead, RuntimeError:
+    except (httpx.ResponseNotRead, RuntimeError):
         return None
 
 

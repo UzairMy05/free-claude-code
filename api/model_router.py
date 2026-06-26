@@ -47,6 +47,17 @@ class ModelRouter:
             force_thinking_enabled,
         ) = self._direct_provider_model(claude_model_name)
         if direct_provider_id is not None and direct_provider_model is not None:
+            # Protect against clients requesting non-free OpenRouter Google/Gemini models directly.
+            # Allow other open_router provider models (e.g., anthopic/opus) to pass through.
+            if (
+                direct_provider_id == "open_router"
+                and (direct_provider_model.startswith("google/")
+                     or "gemini" in direct_provider_model)
+                and not direct_provider_model.endswith(":free")
+            ):
+                raise ValueError(
+                    "Rejected direct OpenRouter Google/Gemini model request: only ':free' slugs allowed"
+                )
             thinking_enabled = (
                 force_thinking_enabled
                 if force_thinking_enabled is not None
@@ -71,6 +82,16 @@ class ModelRouter:
         thinking_enabled = self._settings.resolve_thinking(claude_model_name)
         provider_id = Settings.parse_provider_type(provider_model_ref)
         provider_model = Settings.parse_model_name(provider_model_ref)
+        # If settings map to OpenRouter and reference Google/Gemini, ensure configured
+        # model is a free slug to avoid accidental paid upstream requests.
+        if (
+            provider_id == "open_router"
+            and (provider_model.startswith("google/") or "gemini" in provider_model)
+            and not provider_model.endswith(":free")
+        ):
+            raise ValueError(
+                "Configured OpenRouter Google/Gemini provider model must end with ':free'"
+            )
         if provider_model != claude_model_name:
             logger.debug(
                 "MODEL MAPPING: '{}' -> '{}'", claude_model_name, provider_model

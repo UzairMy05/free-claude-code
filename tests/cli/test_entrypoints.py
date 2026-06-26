@@ -1,5 +1,7 @@
 """Tests for cli/entrypoints.py — fcc-init scaffolding logic."""
 
+from __future__ import annotations
+
 import json
 import tomllib
 from pathlib import Path

@@ -200,3 +200,18 @@ def test_model_router_logs_mapping(settings):
     assert "MODEL MAPPING" in args[0]
     assert args[1] == "claude-2.1"
     assert args[2] == "fallback-model"
+
+
+def test_rejects_direct_non_free_openrouter_gemini_model(settings):
+    router = ModelRouter(settings)
+
+    with pytest.raises(ValueError):
+        router.resolve("open_router/google/gemini-2.5-pro-preview-05-06")
+
+
+def test_accepts_free_openrouter_gemini_model(settings):
+    router = ModelRouter(settings)
+
+    resolved = router.resolve("open_router/google/gemini-2.5-pro-exp-03-25:free")
+    assert resolved.provider_id == "open_router"
+    assert resolved.provider_model.endswith(":free")

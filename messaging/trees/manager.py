@@ -1,5 +1,7 @@
 """Public manager API for tree-based messaging queues."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Callable
 
