@@ -634,7 +634,7 @@ FIELDS: tuple[ConfigFieldSpec, ...] = (
         "voice",
         "select",
         settings_attr="whisper_device",
-        default="nvidia_nim",
+        default="cpu",
         options=("cpu", "cuda", "nvidia_nim"),
         session_sensitive=True,
     ),
@@ -643,7 +643,7 @@ FIELDS: tuple[ConfigFieldSpec, ...] = (
         "Whisper Model",
         "voice",
         settings_attr="whisper_model",
-        default="openai/whisper-large-v3",
+        default="base",
         session_sensitive=True,
     ),
     ConfigFieldSpec(
