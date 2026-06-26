@@ -161,6 +161,31 @@ def create_app(*, lifespan_enabled: bool = True) -> FastAPI:
             content=exc.to_anthropic_format(),
         )
 
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError):
+        """Map invalid request/value errors to 400 with Anthropic format."""
+        settings = get_settings()
+        if settings.log_api_error_tracebacks:
+            logger.error("ValueError: {}", exc)
+            logger.error(traceback.format_exc())
+        else:
+            logger.error(
+                "ValueError: path={} method={} exc_type={}",
+                request.url.path,
+                request.method,
+                type(exc).__name__,
+            )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": str(exc),
+                },
+            },
+        )
+
     @app.exception_handler(Exception)
     async def general_error_handler(request: Request, exc: Exception):
         """Handle general errors and return Anthropic format."""

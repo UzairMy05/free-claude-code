@@ -238,8 +238,7 @@ def test_create_app_general_exception_handler_returns_500():
         assert body["error"]["type"] == "api_error"
 
 
-def test_create_app_general_exception_default_logs_exclude_exception_message():
-    """Unhandled errors must not log exception text by default (may echo user content)."""
+def test_create_app_value_error_handler_returns_400_and_invalid_request_error():
     from api.app import create_app
 
     app = create_app()
@@ -270,7 +269,11 @@ def test_create_app_general_exception_default_logs_exclude_exception_message():
     ):
         with TestClient(app, raise_server_exceptions=False) as client:
             resp = client.get("/raise_secret")
-        assert resp.status_code == 500
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["type"] == "error"
+        assert body["error"]["type"] == "invalid_request_error"
+        assert body["error"]["message"] == secret
 
     flattened: list[str] = []
     for call in log_err.call_args_list:
