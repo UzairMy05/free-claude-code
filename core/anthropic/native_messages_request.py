@@ -273,6 +273,10 @@ def build_openrouter_native_request_body(
     body["stream"] = True
     if body.get("max_tokens") is None:
         body["max_tokens"] = default_max_tokens
+        
+    # Cap max_tokens to avoid OpenRouter balance errors
+    if isinstance(body.get("max_tokens"), int) and body["max_tokens"] > 8192:
+        body["max_tokens"] = 8192
 
     if thinking_enabled:
         _apply_openrouter_reasoning_policy(body, thinking_cfg)
