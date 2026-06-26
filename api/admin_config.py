@@ -412,7 +412,7 @@ FIELDS: tuple[ConfigFieldSpec, ...] = (
         "Default Model",
         "models",
         settings_attr="model",
-        default="nvidia_nim/nvidia/nemotron-3-super-120b-a12b",
+        default="open_router/google/gemini-2.5-pro-exp-03-25:free",
         description="Fallback provider/model route for all Claude model names.",
     ),
     ConfigFieldSpec(
